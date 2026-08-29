@@ -1,4 +1,4 @@
-# Nest AC Monitor — Cloudflare deployment
+# Nest AC Monitor: Cloudflare deployment
 
 The same monitor, running on Cloudflare Workers + D1 instead of the PC.
 
@@ -6,9 +6,10 @@ Your own hostname, e.g. **https://ac.example.com**
 
 ## Why it moved
 
-Not cost — the PC version was free. A monitor running *inside* the apartment
-cannot tell you the apartment lost power or internet; it dies with the thing it
-is watching, and a hole in the record is what gets a record dismissed. The
+The reason was not cost, since running it on a PC was also free. A monitor
+running *inside* the apartment cannot tell you the apartment lost power or
+internet, because it dies with the thing it is watching, and a hole in the
+record is what gets a record dismissed. The
 building tripped its main breaker in a lightning storm on 4 August 2026. A
 monitor hosted elsewhere keeps logging through that and reports the outage as
 Alert C.
@@ -68,14 +69,14 @@ never rendered into the page.
 | `NEST_CLIENT_SECRET` | OAuth client secret |
 | `NEST_REFRESH_TOKEN` | bootstrap refresh token |
 | `NEST_DEVICE_ID` | `enterprises/…/devices/…` |
-| `NTFY_TOPIC` | ntfy topic — on the public server this *is* the auth |
+| `NTFY_TOPIC` | ntfy topic. On the public server this *is* the auth |
 | `WEB_TOKEN` | shared secret for the dashboard |
 | `PUSHOVER_USER_KEY`, `PUSHOVER_TOKEN` | only if using Pushover |
 
 Re-authorising from the dashboard writes the new refresh token to
 `config.refresh_token_override`, because Worker secrets cannot be rewritten at
-runtime. That key is never exposed by `/api/status` — `getSettings()` only ever
-iterates `DEFAULTS`, so it cannot leak by accident.
+runtime. That key is never exposed by `/api/status`, because `getSettings()` only
+iterates `DEFAULTS` and cannot leak it by accident.
 
 ### Authorising a browser
 
@@ -83,7 +84,7 @@ iterates `DEFAULTS`, so it cannot leak by accident.
 https://ac.example.com/auth?token=<WEB_TOKEN>
 ```
 
-Sets a year-long cookie. Every other path returns 401 without it. **It fails
+Sets a year-long cookie. Every other path returns 401 without it, and **it fails
 closed**: if `WEB_TOKEN` is unset, nothing is served at all. An unauthenticated
 page that can switch monitoring off is worse than no dashboard.
 
@@ -95,8 +96,7 @@ configured.
 ## Scripted access
 
 Cloudflare's browser-integrity check rejects some default library user agents
-at the edge with **error 1010**, before the Worker ever sees the request. `curl`
-passes; `Python-urllib` does not. Any script hitting the API needs a
+at the edge with **error 1010**, before the Worker ever sees the request. `curl` passes and `Python-urllib` does not. Any script hitting the API needs a
 conventional `User-Agent` header:
 
 ```python
@@ -106,9 +106,9 @@ headers = {
 }
 ```
 
-The symptom is a 403 with `error code: 1010` in the body — not a 401, which is
-what a bad token gives you. Worth distinguishing: 401 means the Worker rejected
-you, 403/1010 means you never reached it.
+The symptom is a 403 with `error code: 1010` in the body, rather than the 401 a
+bad token gives you. The distinction matters: 401 means the Worker rejected you,
+and 403/1010 means you never reached it.
 
 ## Operations
 

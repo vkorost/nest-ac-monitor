@@ -1,7 +1,7 @@
 # Notifications
 
 Two backends ship with this project. **Which one you pick matters more than it
-looks**, and the reason is a trap worth understanding before you choose.
+looks.** The reason is a trap worth understanding before you choose.
 
 ---
 
@@ -18,7 +18,7 @@ looks**, and the reason is a trap worth understanding before you choose.
 | Repeat until acknowledged | ❌ | ✅ |
 | Open source, self-hostable | ✅ | ❌ |
 
-**If you deploy to Cloudflare — which is the whole point of this project — use
+**If you deploy to Cloudflare, which is the whole point of this project, use
 Pushover.**
 
 ---
@@ -63,17 +63,17 @@ publishing to ntfy from the same IP, and strangers use it up.
 ### What does not fix it
 
 **Creating an ntfy account and an access token.** This was tried. It changed
-nothing, because the limit was never about the account — `basis` stays `ip` on
+nothing, because the limit was never about the account. `basis` stays `ip` on
 the free tier. Only a **paid** ntfy plan (roughly $60/year) moves the quota onto
 your account.
 
 ### Why it matters more than it sounds
 
 The failure is *intermittent and silent*. Alerts arrive when the shared quota
-happens to have room and vanish when it does not — and the busiest days are hot
+happens to have room and vanish when it does not, and the busiest days are hot
 days, which is exactly when your air conditioning fails. An alerting system that
-is unreliable in proportion to how much you need it is worse than one that is
-simply absent, because you stop checking.
+becomes unreliable in proportion to how much you need it is worse than one that
+is simply absent, because you stop checking.
 
 ---
 
@@ -83,12 +83,12 @@ simply absent, because you stop checking.
 Per-account quota of 10,000 messages/month. At this monitor's alert rate you
 would use about 0.25% of that.
 
-> Ignore anything labelled **"Pushover for Teams"** at $5/user/month — that is
-> for organisations.
+> Ignore anything labelled **"Pushover for Teams"** at $5/user/month. That plan
+> is for organisations.
 
 ### Setup
 
-1. **https://pushover.net/signup** — free account
+1. **https://pushover.net/signup**, a free account
 2. Install **Pushover Notifications** from the app store and log in. Your
    **User Key** is on the app's main screen and on the website. The trial starts
    here.
@@ -113,18 +113,18 @@ wrangler secret put PUSHOVER_TOKEN
 ## If you would rather not pay
 
 **ntfy.sh still works** if you run the monitor on your own machine, where the IP
-is yours alone. Set `NTFY_TOPIC` to something long and unguessable — on the
-public server, the topic name *is* the authentication, and anyone who knows it
+is yours alone. Set `NTFY_TOPIC` to something long and unguessable. On the
+public server the topic name *is* the authentication, and anyone who knows it
 can both read your alerts and publish fakes to them.
 
 **Telegram** is a good free alternative from a cloud host: bot-token
-authentication, no IP quota, reliable delivery, and silent delivery is a
+authentication, no IP quota, reliable delivery, and silent delivery as a
 per-message flag. It is not implemented here, but the `Notifier` interface is
 three lines and adding one is straightforward.
 
 **Or accept no notifications at all.** The log still records every episode. You
-would simply not be told at the time — which, given that the record is the more
-valuable half of this project, is less bad than it sounds.
+would simply not be told at the time, which is less bad than it sounds given
+that the record is the more valuable half of this project.
 
 ---
 
@@ -138,10 +138,9 @@ Normalised across backends:
 | 1 high | all alerts by default | 4 | 1 |
 | 2 emergency | stuck cooling, only if you opt in | 5 | 2 (repeats until acknowledged) |
 
-By default **nothing overrides Do Not Disturb.** You get the warning; your phone
-decides whether to make noise. There is a **"wake me at night"** checkbox in the
-dashboard that raises the stuck-cooling alert to emergency if you want to be
-woken.
+By default **nothing overrides Do Not Disturb.** You get the warning and your
+phone decides whether to make noise. A **"wake me at night"** checkbox in the
+dashboard raises the stuck-cooling alert to emergency if you want to be woken.
 
 ---
 
@@ -152,4 +151,4 @@ Both are easy to miss and both silently break exactly the case you care about.
 - **Battery → Unrestricted.** Settings → Apps → *(your notification app)* →
   Battery. Doze otherwise holds background pushes, sometimes for hours.
 - **Override Do Not Disturb**, if you have opted into emergency alerts.
-  Long-press a notification from the app → channel settings.
+  Long-press a notification from the app, then open channel settings.
