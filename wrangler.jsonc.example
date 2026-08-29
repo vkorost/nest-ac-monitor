@@ -1,0 +1,21 @@
+{
+  "name": "nest-ac-monitor",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nestac",
+      "database_id": "PASTE_THE_ID_FROM_WRANGLER_D1_CREATE"
+    }
+  ],
+  // Poll every five minutes. The floor that matters is Google's rate limit,
+  // not Cloudflare's - 288 polls a day is nowhere near either.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "routes": [
+    { "pattern": "ac.example.com", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}

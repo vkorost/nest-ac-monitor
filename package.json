@@ -1,0 +1,13 @@
+{
+  "name": "nest-ac-monitor",
+  "version": "1.0.0",
+  "description": "Read-only monitor that detects air-conditioning compressor lockout from thermostat data, running free on Cloudflare Workers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/detect.test.mjs",
+    "deploy": "wrangler deploy",
+    "logs": "wrangler tail"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Nest AC Monitor</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #5c5c5c;
+    --rule: #e2e2e2;
+    --link: #1a5fb4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --fg: #e8e8e8;
+      --muted: #9aa0a6;
+      --rule: #2e3238;
+      --link: #7cb0f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 3rem 1.25rem 5rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 40rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  .tagline { color: var(--muted); margin: 0 0 2rem; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .6rem; }
+  p { margin: 0 0 1rem; }
+  ul { margin: 0 0 1rem; padding-left: 1.25rem; }
+  li { margin-bottom: .35rem; }
+  a { color: var(--link); }
+  footer {
+    margin-top: 3rem; padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: .875rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nest AC Monitor</h1>
+  <p class="tagline">A personal, single-user monitoring utility.</p>
+
+  <p>
+    Nest AC Monitor is a private application that runs on its owner's own computer.
+    It reads temperature, humidity, and operating status from the owner's own Nest
+    thermostat through the Google Smart Device Management API, and sends the owner a
+    notification when the readings indicate the air conditioning has stopped cooling.
+  </p>
+
+  <h2>What it does</h2>
+  <ul>
+    <li>Reads thermostat data every few minutes.</li>
+    <li>Records the readings to a local database on the owner's computer.</li>
+    <li>Notifies the owner when the thermostat reports cooling but the temperature is not falling.</li>
+  </ul>
+
+  <h2>What it does not do</h2>
+  <ul>
+    <li>It does not send any commands to the thermostat. It is read-only.</li>
+    <li>It has no user accounts, no sign-up, and no other users.</li>
+    <li>It transmits no data to this website or to any third party.</li>
+  </ul>
+
+  <p>
+    The application is not distributed and is not available for use by anyone else.
+  </p>
+
+  <footer>
+    <a href="privacy.html">Privacy policy</a>
+  </footer>
+</main>
+</body>
+</html>

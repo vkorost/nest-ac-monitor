@@ -1,0 +1,26 @@
+# Never commit the real deployment config - it carries your D1 database id and
+# your hostname. Start from wrangler.jsonc.example.
+wrangler.jsonc
+oauth-pages/wrangler.jsonc
+
+# Secrets live in Cloudflare Worker secrets and, for the bootstrap script, in
+# %LOCALAPPDATA%\NestACMonitor\secrets.json - deliberately outside this tree.
+# These patterns exist so an accidental copy never gets committed.
+secrets.json
+*.secret
+.secrets*
+.env
+.dev.vars
+
+# Local data and exports. The samples are a record of your own apartment.
+*.db
+*.db-wal
+*.db-shm
+*.csv
+import.sql
+
+node_modules/
+.wrangler/
+__pycache__/
+*.pyc
+.DS_Store

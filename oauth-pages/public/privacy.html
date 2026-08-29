@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Privacy Policy — Nest AC Monitor</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #5c5c5c;
+    --rule: #e2e2e2;
+    --link: #1a5fb4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --fg: #e8e8e8;
+      --muted: #9aa0a6;
+      --rule: #2e3238;
+      --link: #7cb0f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 3rem 1.25rem 5rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 40rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  .updated { color: var(--muted); margin: 0 0 2rem; font-size: .9rem; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .6rem; }
+  p { margin: 0 0 1rem; }
+  ul { margin: 0 0 1rem; padding-left: 1.25rem; }
+  li { margin-bottom: .35rem; }
+  a { color: var(--link); }
+  footer {
+    margin-top: 3rem; padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: .875rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Nest AC Monitor · Last updated 27 August 2026</p>
+
+  <p>
+    Nest AC Monitor is a personal application with a single user: its owner. It is not
+    distributed, not offered as a service, and has no other users. This policy describes
+    how it handles data.
+  </p>
+
+  <h2>Data accessed</h2>
+  <p>
+    With the owner's explicit Google authorization, the application reads the following
+    from the owner's own Nest thermostat, using the Google Smart Device Management API:
+  </p>
+  <ul>
+    <li>Ambient temperature</li>
+    <li>Ambient humidity</li>
+    <li>Heating and cooling status, and thermostat mode</li>
+    <li>Temperature setpoint</li>
+    <li>Device connectivity status</li>
+  </ul>
+  <p>
+    It requests only the <code>sdm.service</code> scope, and it reads. It sends no commands
+    to the thermostat.
+  </p>
+
+  <h2>How the data is used</h2>
+  <p>
+    Readings are used to detect when the thermostat reports that it is cooling while the
+    measured temperature is not falling, which indicates an air conditioning fault. When
+    that occurs, the application sends a notification to the owner's own phone.
+  </p>
+
+  <h2>How the data is stored</h2>
+  <p>
+    All readings are stored in a database file on the owner's own computer. Google account
+    credentials are stored on that same computer, in a file restricted to the owner's user
+    account. Nothing is stored on this website or on any server.
+  </p>
+
+  <h2>Data sharing</h2>
+  <p>
+    No data is sold, shared, transferred, or disclosed to any third party. The application
+    communicates with two services only: Google's Smart Device Management API, to read the
+    thermostat, and a push notification service chosen by the owner, to deliver alerts to
+    the owner's own phone.
+  </p>
+
+  <h2>Retention and deletion</h2>
+  <p>
+    Readings are retained on the owner's computer for 90 days and then deleted
+    automatically. The owner may delete the database, revoke the application's access, or
+    both, at any time. Access can be revoked at
+    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>,
+    which immediately and permanently ends the application's ability to read any data.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    This application has one user, who is also its author. Enquiries may be directed to the
+    owner of this domain.
+  </p>
+
+  <footer>
+    <a href="./">Nest AC Monitor</a>
+  </footer>
+</main>
+</body>
+</html>
