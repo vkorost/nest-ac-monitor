@@ -163,6 +163,9 @@ ul.status .v{font-family:var(--mono);font-size:.82rem;text-align:right}
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem}
 .fields label{display:flex;flex-direction:column;gap:.25rem;font-size:.75rem;color:var(--muted)}
 .fields label.check{flex-direction:row;align-items:center;gap:.5rem;min-height:40px}
+.fields.pair{grid-template-columns:1fr 1fr}
+label.check{display:flex;align-items:center;gap:.5rem;min-height:40px;
+  font-size:.75rem;color:var(--muted)}
 input,select,textarea{font:inherit;font-family:var(--mono);font-size:16px;
   padding:.5rem;border:1px solid var(--rule);border-radius:8px;
   background:var(--bg);color:var(--ink);width:100%}
@@ -309,9 +312,10 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
         <label>retention days<input type="number" data-key="retention_days" min="1" step="1"></label>
       </div>
       <h2>quiet hours</h2>
-      <p class="note">B and C are held until the window ends. A is never held.</p>
-      <div class="fields">
-        <label class="check"><input type="checkbox" data-key="quiet_hours_enabled"> enabled</label>
+      <p class="note">Inside this window, humidity and thermostat-offline alerts
+        wait until it ends. Stuck cooling always comes through.</p>
+      <label class="check"><input type="checkbox" data-key="quiet_hours_enabled"> enabled</label>
+      <div class="fields pair">
         <label>start<input type="time" data-key="quiet_start"></label>
         <label>end<input type="time" data-key="quiet_end"></label>
       </div>
@@ -329,7 +333,7 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
         <label>notifier
           <select data-key="notifier"><option value="ntfy">ntfy</option><option value="pushover">pushover</option></select>
         </label>
-        <label class="check"><input type="checkbox" data-key="wake_at_night"> wake me at night (Alert A overrides Do Not Disturb)</label>
+        <label class="check"><input type="checkbox" data-key="wake_at_night"> wake me at night (stuck cooling overrides Do Not Disturb)</label>
       </div>
       <div class="row">
         <button id="test-notify" class="primary" type="button">send test notification</button>
@@ -464,7 +468,7 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
         order above.</p>
 
       <h2>why the window slides</h2>
-      <p>Alert A measures the <strong>most recent</strong> 25 minutes, not the whole
+      <p>The stuck-cooling check measures the <strong>most recent</strong> 25 minutes, not the whole
         run. A unit that cools well for 25 minutes and then quits would otherwise
         hide behind its own good start &mdash; the longer it sat dead, the healthier
         it would look. That exact failure happened on 27 August and the detection
@@ -546,7 +550,7 @@ async function refreshStatus() {
   } else if (cool.at_risk && cool.minutes > 0) {
     v.className = "verdict watch";
     v.textContent = "Cooling " + cool.run_minutes + " min, flat over the last "
-      + cool.minutes + ". Alert A fires at " + settings.stuck_minutes + " min flat.";
+      + cool.minutes + ". Alert fires at " + settings.stuck_minutes + " min flat.";
   } else if (c.hvac_status === "COOLING") {
     v.className = "verdict fine";
     v.textContent = "Cooling " + cool.run_minutes + " min, " + cool.run_delta_f + "F. Working.";
