@@ -11,6 +11,30 @@ It runs on Cloudflare's free tier, polls your Nest every five minutes, pushes an
 alert to your phone, and keeps a timestamped record you can hand to a
 technician. That record turned out to be the more useful half.
 
+---
+
+## Before you read further: you need a Google Nest thermostat
+
+This reads your thermostat through Google's Smart Device Management API, so
+there is a hard prerequisite. **No Nest, no monitor.**
+
+**You need all three:**
+
+| | |
+|---|---|
+| **A Google Nest thermostat** | Migrated to a Google Account rather than a legacy Nest account. Free way to check: if the thermostat appears in the **Google Home** app, you are fine. |
+| **A personal `@gmail.com` account** | Google **Workspace** accounts cannot register for Device Access at all. The console will not load and the OAuth flow cannot complete. |
+| **A phone you want alerts on** | Android or iOS. |
+
+**This is for you if** you have a Nest, you have air conditioning that
+occasionally stops cooling without telling you, and you would rather find out in
+five minutes than five hours.
+
+**This is not for you if** you have any other thermostat. The detection logic in
+`src/detect.js` is device-agnostic and would port to anything that reports an
+ambient temperature and a commanded heating/cooling state, but nothing here
+works with another brand as shipped.
+
 ![The dashboard](screenshots/nest-ac-app-UI.jpg)
 
 *The 24-hour view. Shaded bands are periods the thermostat was calling for cool.

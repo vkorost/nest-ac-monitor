@@ -10,6 +10,25 @@ failed at 2 AM.
 
 ---
 
+## Prerequisite: a Google Nest thermostat
+
+This design reads the thermostat through Google's Smart Device Management API.
+Before starting, confirm the user has all three:
+
+- **A Google Nest thermostat**, migrated to a Google Account rather than a
+  legacy Nest account. Free check: does it appear in the **Google Home** app?
+- **A personal `@gmail.com` account.** Google Workspace accounts cannot register
+  for Device Access at all, and this is a hard block rather than a warning.
+  Confirm it before the user spends the non-refundable $5.
+- **A phone** to receive the alerts on.
+
+Without a Nest none of this applies. The detection logic in §6 is
+device-agnostic and would port to anything reporting an ambient temperature and
+a commanded heating/cooling state, but everything from §4 onward assumes the
+Google API.
+
+---
+
 ## 1. The problem
 
 An apartment air conditioner — typically a **water-source heat pump** on a
