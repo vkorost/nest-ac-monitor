@@ -65,15 +65,19 @@ export async function pollOnce(env) {
   await db.insertSample(database, sample, error, now, settings.timezone);
 
   const rows = await db.recentSamples(database, 120);
+  // States are read before evaluate() because the humidity rule needs to know
+  // whether it is already active: a live alert holds until the reading falls
+  // clear of the threshold, rather than clearing the moment it touches it.
+  const states = await db.getStates(database);
   const conditions = detect.evaluate({
     rows,
     consecutiveErrors: await db.consecutiveErrors(database),
     settings,
     authFailed,
+    active: new Set(detect.TYPES.filter((t) => states[t]?.active)),
   });
 
   const notifier = buildNotifier(settings, env);
-  const states = await db.getStates(database);
 
   const { sent, states: nextStates } = await detect.processAlerts({
     conditions,
@@ -84,6 +88,11 @@ export async function pollOnce(env) {
     // Evidence: always written, whatever the push service is doing.
     record: async (type, direction, payload) => {
       await db.logAlert(database, type, direction, payload, now, settings.timezone);
+    },
+    // Evidence of delivery, written after the fact so the alert log can say
+    // whether the push actually reached the phone.
+    delivered: async (type) => {
+      await db.markAlertNotified(database, type);
     },
     // Notification: best effort, retried on the next tick if it fails.
     notify: async (type, direction, payload) => {
@@ -134,7 +143,11 @@ async function statusView(env) {
   const flat = detect.stall(run.streak, settings.stuck_minutes);
   const half = detect.stall(run.streak, Math.max(5, settings.stuck_minutes * 0.6));
 
-  const count = await database.prepare("SELECT COUNT(*) AS n FROM samples").first();
+  // db.sampleCount() reads a single config row. It is not a COUNT(*) on
+  // purpose - that scanned all 13,000+ samples on every status poll and burned
+  // the account's whole D1 free-tier day in 24 hours. See the comment above
+  // sampleCount() in db.js before changing this.
+  const sampleTotal = await db.sampleCount(database);
   const r1 = (v) => (v === null || v === undefined ? null : Math.round(v * 10) / 10);
   const f = detect.toF;
 
@@ -171,7 +184,7 @@ async function statusView(env) {
         return [t, { active: Boolean(s.active), fired: Boolean(s.fired), pending: Boolean(s.pending), since: s.since_ts || null }];
       })
     ),
-    sample_count: count?.n ?? 0,
+    sample_count: sampleTotal,
     api_ok: !latest?.error,
     auth_ok: !(latest?.error || "").startsWith("auth:"),
     stale: Boolean(stale),
@@ -282,13 +295,22 @@ export default {
         // any scripts pointed at the previous endpoint keep working.
         const rangeKey = url.searchParams.get("range")
           || (url.searchParams.get("hours") ? "24h" : "24h");
-        const { bucket, rows } = await db.chartSeries(env.DB, rangeKey);
+
+        // `since` (epoch ms) asks for only the samples added after the point
+        // the caller already holds, so a chart refresh reads one row instead of
+        // a whole window. chartSeries() clamps it to the range, and answers
+        // with partial:true when it honoured it, which is the client's signal
+        // to append rather than replace.
+        const sinceRaw = Number(url.searchParams.get("since"));
+        const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : null;
+        const { bucket, partial, rows } = await db.chartSeries(env.DB, rangeKey, since);
         const r1 = (v) => (v === null || v === undefined ? null : Math.round(v * 10) / 10);
         const f = detect.toF;
 
         return json({
           range: rangeKey,
           bucket,
+          partial,
           samples: rows.map((r) => ({
             ts: r.ts_local,
             ambient_f: r1(f(r.ambient_c)),
@@ -332,15 +354,11 @@ export default {
         const settings = await db.getSettings(env.DB);
         const notifier = buildNotifier(settings, env);
         try {
-          // Send at the priority a real stuck-cooling alert would use, so the
-          // test verifies the path the user will actually experience rather
-          // than a louder one that might get through when the real one does not.
-          const priority = detect.priorityFor("A", "fire", settings);
           await notifier.send(
             "Nest AC Monitor - test",
-            "Delivery path works. A real stuck-cooling alert arrives like this, " +
-              "with temperature, setpoint, minutes stuck and the change over the window.",
-            priority
+            "Delivery path works. A real Alert A arrives at high priority with " +
+              "temperature, setpoint, minutes stuck and the change over the window.",
+            2
           );
         } catch (err) {
           return json({ ok: false, error: err.message }, 502);

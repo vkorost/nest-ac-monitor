@@ -57,6 +57,21 @@ software, kept and explained rather than deleted.*
 288 polls a day against Cloudflare's free limits of 100,000 requests and 100,000
 D1 writes. Nothing here grows into a bill.
 
+The limit that actually binds is a different one. **D1's free tier allows five
+million rows read per day across your whole Cloudflare account**, and it bills
+rows *examined*, not rows returned. `SELECT COUNT(*)` on a 13,000-row table
+costs 13,000 rows every time it runs, because no index can answer a count; put
+that behind a dashboard polling every ten seconds and one browser tab left open
+overnight spends the entire daily allowance - for every D1 database on the
+account, not just this one. That happened here on 12 October 2026, and it took
+a second, unrelated app down with it.
+
+So the dashboard polls once per sample on a timer aligned to the cron, fetches
+only the chart points added since its last one, pauses completely while the tab
+is hidden, and stops after two hours idle. The stored-sample count is a counter
+in `config`, not a `COUNT(*)`. If you fork this, keep the rule: anything on a
+timer has to cost O(rows returned), not O(table).
+
 ### A note on the $5 for notifications
 
 This project originally used **ntfy.sh**, which is free and needs no account. It
@@ -118,13 +133,20 @@ signal available, and it is enough.
 | Alert | Condition |
 |---|---|
 | **Stuck cooling** | Calling for cool for 25 minutes with less than 0.5 °F of drop **over the most recent 25 minutes** |
-| **Humidity** | Indoor humidity ≥60% on two consecutive polls. The coil has stopped removing moisture, which is often the earliest sign |
+| **Humidity** | Indoor humidity ≥60% held for 45 minutes without a break. The coil has stopped removing moisture, which is often the earliest sign |
 | **Thermostat offline** | Unreachable twice running, or three consecutive API failures |
 | **Auth expiry** | Google rejected the stored credentials. Without this the monitor goes blind silently |
 
-Each fires once, sends one recovery notification when it clears, and never
-repeats more than once an hour. Quiet hours can hold the minor alerts until
-morning. The stuck-cooling alert is never held.
+Each fires once and sends one recovery notification when it clears. Stuck
+cooling is the exception: while the condition still holds you are reminded
+every hour, up to ten times, numbered in the title so the phone shows each as a
+new message instead of collapsing it into the one before. Quiet hours can hold
+the minor alerts until morning. The stuck-cooling alert is never held.
+
+Alert rows are written before the notification is attempted, so the record
+survives a push service being down - which means "started" in the log does not
+by itself mean the message arrived. Rows carry a delivery flag, and the
+dashboard marks the ones that never got out.
 
 ### Why the window slides
 

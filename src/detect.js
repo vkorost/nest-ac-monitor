@@ -26,6 +26,12 @@ export function priorityFor(type, direction, settings = {}) {
   return PRIORITIES[type] ?? 0;
 }
 
+// Alerts that keep reminding you while the condition holds. Only A: a
+// compressor locked out an hour ago is still an emergency, and a single push at
+// 15:00 is easy to lose among others (which is exactly what happened on
+// 2026-10-12). Adding "C" here would make an offline thermostat nag too.
+export const REPEATABLE = new Set(["A"]);
+
 // B and C can wait for morning if quiet hours are on. A never waits.
 const QUIET_DEFERRABLE = new Set(["B", "C"]);
 
@@ -125,7 +131,16 @@ export function stall(streak, stuckMinutes) {
  * @param rows newest first
  * @returns {Object<string, {met: boolean, payload: object}>}
  */
-export function evaluate({ rows, consecutiveErrors = 0, settings, authFailed = false }) {
+export function evaluate({
+  rows,
+  consecutiveErrors = 0,
+  settings,
+  authFailed = false,
+  // Which alerts are already active. Only the humidity rule uses it, to hold a
+  // live alert until the reading falls clear of the threshold rather than
+  // clearing the moment it touches the line.
+  active = new Set(),
+}) {
   const windowed = usableWindow(rows, settings.poll_seconds);
 
   // A row is only evidence if it carries the signal. Rows with a null reading
@@ -159,18 +174,42 @@ export function evaluate({ rows, consecutiveErrors = 0, settings, authFailed = f
     },
   };
 
-  // --- B: humidity, two consecutive polls ----------------------------------
-  const humidTwo = humid.slice(0, 2);
+  // --- B: humidity, sustained ----------------------------------------------
+  //
+  // This used to fire on two consecutive polls, which is ten minutes, which is
+  // no tolerance at all: the October 2026 log is a wall of five- and ten-minute
+  // humidity episodes that cleared on their own. An alert that cries wolf
+  // nineteen times teaches you to ignore the twentieth, and the twentieth was
+  // the AC failing. So the reading now has to stay up for humidity_minutes
+  // without a break, AND the window has to be covered by samples - a single
+  // reading after a cron gap is not evidence of three quarters of an hour.
+  //
+  // Clearing is deliberately asymmetric: once active, the alert holds until the
+  // reading drops humidity_clear_margin below the threshold, so humidity
+  // resting exactly on 60 does not emit a started/cleared pair every few polls.
+  const dwellMs = Math.max(0, settings.humidity_minutes ?? 0) * 60000;
+  const newestHumid = humid[0] || null;
+  const inDwell = newestHumid
+    ? humid.filter((r) => ms(newestHumid.ts) - ms(r.ts) <= dwellMs)
+    : [];
+  const span = inDwell.length > 1 ? ms(inDwell[0].ts) - ms(inDwell[inDwell.length - 1].ts) : 0;
+  // One poll interval of slack: samples land a few seconds late, and demanding
+  // the full span exactly would make the alert impossible to reach.
+  const covered = dwellMs === 0 || (inDwell.length > 1 && span >= dwellMs - settings.poll_seconds * 1000);
+  const sustained =
+    covered && inDwell.length > 0 && inDwell.every((r) => r.humidity_pct >= settings.humidity_pct);
+  const stillHigh =
+    newestHumid !== null &&
+    newestHumid.humidity_pct >= settings.humidity_pct - (settings.humidity_clear_margin ?? 0);
+
   results.B = {
-    met: Boolean(
-      settings.alert_b_enabled &&
-        humidTwo.length === 2 &&
-        humidTwo.every((r) => r.humidity_pct >= settings.humidity_pct)
-    ),
+    met: Boolean(settings.alert_b_enabled && (active.has("B") ? stillHigh : sustained)),
     payload: {
-      humidity_pct: humidTwo.length ? humidTwo[0].humidity_pct : null,
+      humidity_pct: newestHumid ? newestHumid.humidity_pct : null,
       threshold: settings.humidity_pct,
-      ambient_f: humidTwo.length ? round1(toF(humidTwo[0].ambient_c)) : null,
+      minutes: Math.round(span / 60000),
+      dwell_minutes: settings.humidity_minutes ?? 0,
+      ambient_f: newestHumid ? round1(toF(newestHumid.ambient_c)) : null,
     },
   };
 
@@ -228,6 +267,11 @@ export function message(type, direction, payload) {
     const delta = payload.delta_f;
     const word = delta > 0 ? "rose" : "flat";
     let opening = `No cooling for ${payload.minutes} minutes while the thermostat has been calling for cool.`;
+    if (payload.repeat) {
+      opening =
+        `Still not cooling. ${payload.active_minutes} minutes since the first alert, ` +
+        "and the thermostat is still calling for cool.";
+    }
     if (payload.run_minutes > payload.minutes + 5) {
       opening += ` The run has been going ${payload.run_minutes} minutes in total.`;
     }
@@ -243,7 +287,13 @@ export function message(type, direction, payload) {
     if (payload.humidity_pct !== null) lines.push(`  Humidity   ${payload.humidity_pct}%`);
     if (payload.outdoor_wetbulb_f !== null) lines.push(`  Outdoor WB ${payload.outdoor_wetbulb_f}F`);
     lines.push("", "Likely compressor lockout. Reset: Off, wait 5 min, back to Cool.");
-    return { title, body: lines.join("\n") };
+    // The reminder number goes in the title: a push that looks identical to the
+    // one before it gets collapsed into that one on the phone, which is exactly
+    // how an alert goes unseen.
+    return {
+      title: payload.repeat ? `${title} - still (${payload.repeat}/${payload.repeat_max})` : title,
+      body: lines.join("\n"),
+    };
   }
 
   if (type === "B") {
@@ -251,7 +301,7 @@ export function message(type, direction, payload) {
       title,
       body:
         `Indoor humidity ${payload.humidity_pct}% (threshold ${payload.threshold}%) ` +
-        "for two consecutive polls. The coil has stopped dehumidifying.",
+        `held for ${payload.minutes} minutes. The coil has stopped dehumidifying.`,
     };
   }
 
@@ -319,10 +369,23 @@ export function inQuietHours(settings, date, timeZone) {
  *
  * @returns {{sent: Array, states: Object}}
  */
-export async function processAlerts({ conditions, states, settings, now, timeZone, record, notify }) {
+export async function processAlerts({
+  conditions,
+  states,
+  settings,
+  now,
+  timeZone,
+  record,
+  notify,
+  // Optional: called with the type once a fire has actually been delivered, so
+  // the evidence row can say so. Absent in tests that do not care.
+  delivered,
+}) {
   const nowIso = now.toISOString();
   const quiet = inQuietHours(settings, now, timeZone);
   const cooldownMs = settings.cooldown_minutes * 60000;
+  const repeatMs = Math.max(0, settings.repeat_minutes ?? 0) * 60000;
+  const repeatMax = Math.max(0, settings.repeat_max ?? 0);
   const sent = [];
   const next = {};
 
@@ -344,7 +407,10 @@ export async function processAlerts({ conditions, states, settings, now, timeZon
       // Record first, unconditionally. The evidence must not depend on a push
       // service being reachable.
       if (!state.logged && !held) {
-        await record(type, "fire", payload);
+        // notified:false until a push lands - see markAlertNotified(). Before
+        // this the log said "started" whether or not the phone ever got it, so
+        // "I never saw that alert" was an unanswerable question.
+        await record(type, "fire", { ...payload, notified: false });
         state.logged = 1;
       }
 
@@ -362,7 +428,35 @@ export async function processAlerts({ conditions, states, settings, now, timeZon
           state.fired = 1;
           state.pending = 0;
           state.last_fire_ts = nowIso;
+          if (delivered) await delivered(type);
           sent.push({ type, direction: "fire" });
+        }
+      } else if (REPEATABLE.has(type) && !held && repeatMs > 0 && repeatMax > 0) {
+        // Still true an hour later is still worth saying. The reminder number
+        // is derived from since_ts rather than stored, so this needs no extra
+        // column, and a reminder that fails to send retries on the next tick
+        // (last_fire_ts only moves on success) without consuming its slot.
+        //
+        // Reminders are notified but not logged: the episode is already
+        // bracketed by its started/cleared pair, and ten more rows per episode
+        // would bury the evidence the log exists for.
+        const activeMs = state.since_ts ? now.getTime() - Date.parse(state.since_ts) : 0;
+        const sinceFireMs = state.last_fire_ts
+          ? now.getTime() - Date.parse(state.last_fire_ts)
+          : 0;
+        const index = Math.floor(activeMs / repeatMs);
+
+        if (index >= 1 && index <= repeatMax && sinceFireMs >= repeatMs) {
+          const reminder = {
+            ...payload,
+            repeat: index,
+            repeat_max: repeatMax,
+            active_minutes: Math.round(activeMs / 60000),
+          };
+          if (await notify(type, "fire", reminder)) {
+            state.last_fire_ts = nowIso;
+            sent.push({ type, direction: "fire", repeat: index });
+          }
         }
       }
     } else if (state.active) {

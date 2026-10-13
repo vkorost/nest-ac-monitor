@@ -67,7 +67,7 @@ class Recorder {
   }
   record() {
     return async (type, direction, payload) => {
-      this.rows.push({ type, direction });
+      this.rows.push({ type, direction, notified: payload.notified === true });
     };
   }
   notify() {
@@ -76,6 +76,17 @@ class Recorder {
       const { title, body } = message(type, direction, payload);
       this.sent.push({ type, direction, title, body });
       return true;
+    };
+  }
+  /** Stands in for markAlertNotified(): flips the newest fire row for a type. */
+  delivered() {
+    return async (type) => {
+      for (let i = this.rows.length - 1; i >= 0; i--) {
+        if (this.rows[i].type === type && this.rows[i].direction === "fire") {
+          this.rows[i].notified = true;
+          return;
+        }
+      }
     };
   }
   fires() {
@@ -92,16 +103,27 @@ async function cycle(sampleRows, states, rec, opts = {}) {
     consecutiveErrors: opts.consecutiveErrors || 0,
     settings: opts.settings || settings,
     authFailed: opts.authFailed || false,
+    // As pollOnce does: what is already active changes how the humidity rule
+    // clears, so the tests have to feed it back the same way.
+    active: new Set(Object.keys(states || {}).filter((t) => states[t]?.active)),
   });
   return processAlerts({
     conditions,
     states,
     settings: opts.settings || settings,
-    now: new Date(),
+    now: opts.now || new Date(),
     timeZone: TZ,
     record: rec.record(),
     notify: rec.notify(),
+    delivered: rec.delivered(),
   });
+}
+
+/** A run of humid samples at a fixed reading, newest first. */
+function humidRun(minutes, humidity_pct, step = 5) {
+  const out = [];
+  for (let m = 0; m <= minutes; m += step) out.push({ minutesAgo: m, ambient_c: 25, humidity_pct });
+  return out;
 }
 
 // ---------------------------------------------------------------- Alert A
@@ -151,17 +173,108 @@ console.log("Alert A - stuck cooling");
 
 console.log("\nAlert B - humidity");
 {
+  // The old rule was two consecutive polls - ten minutes - and the October 2026
+  // log is a wall of five-minute episodes that cleared themselves. These cases
+  // pin the tolerance that replaced it.
   const rec = new Recorder();
-  const r = await cycle(
-    rows(
-      { minutesAgo: 0, ambient_c: 25, humidity_pct: 66 },
-      { minutesAgo: 5, ambient_c: 25, humidity_pct: 65 }
-    ),
+  const brief = await cycle(rows(...humidRun(20, 66)), {}, rec);
+  check("twenty minutes over threshold does not fire",
+    !brief.sent.some((s) => s.type === "B"));
+
+  const sustained = await cycle(rows(...humidRun(50, 66)), {}, rec);
+  check("fires once humidity has held for the dwell window",
+    sustained.sent.some((s) => s.type === "B"));
+
+  const body = rec.fires().find((f) => f.type === "B")?.body || "";
+  check("humidity message states how long it held", /held for \d+ minutes/.test(body));
+
+  // A single reading after a cron gap is not evidence of 45 minutes.
+  const gap = await cycle(
+    rows({ minutesAgo: 0, ambient_c: 25, humidity_pct: 70 },
+         { minutesAgo: 400, ambient_c: 25, humidity_pct: 70 }),
     {},
-    rec
+    new Recorder()
   );
-  check("fires after two consecutive polls over threshold",
-    r.sent.some((s) => s.type === "B"));
+  check("one reading after a gap does not satisfy the dwell",
+    !gap.sent.some((s) => s.type === "B"));
+
+  // Hysteresis: active at 60, a reading of 59 holds (margin 2), 57 clears.
+  const held = await cycle(rows(...humidRun(50, 59)), sustained.states, new Recorder());
+  check("stays active inside the clear margin", Boolean(held.states.B.active));
+
+  const cleared = await cycle(rows(...humidRun(50, 57)), sustained.states, new Recorder());
+  check("clears once it falls past the margin", !cleared.states.B.active);
+
+  // The margin must not become a back door into firing.
+  const belowFresh = await cycle(rows(...humidRun(50, 59)), {}, new Recorder());
+  check("a reading inside the margin never fires from cold",
+    !belowFresh.sent.some((s) => s.type === "B"));
+}
+
+// ------------------------------------------------- Alert A keeps reminding
+
+console.log("\nAlert A - hourly reminders");
+{
+  const rec = new Recorder();
+  const stuck = rows(...flatRun(30, 26.5));
+  const t0 = new Date();
+  const at = (mins) => new Date(t0.getTime() + mins * 60000);
+
+  let r = await cycle(stuck, {}, rec, { now: t0 });
+  check("first notification is the fire", rec.fires().length === 1);
+
+  r = await cycle(stuck, r.states, rec, { now: at(30) });
+  check("silent half an hour in", rec.fires().length === 1);
+
+  r = await cycle(stuck, r.states, rec, { now: at(61) });
+  check("reminds an hour after the first alert", rec.fires().length === 2);
+  check("reminder is numbered in the title", /still \(1\/10\)/.test(rec.fires()[1].title));
+  check("reminder body says it is still not cooling",
+    /Still not cooling/.test(rec.fires()[1].body));
+
+  r = await cycle(stuck, r.states, rec, { now: at(95) });
+  check("does not remind twice inside the hour", rec.fires().length === 2);
+
+  r = await cycle(stuck, r.states, rec, { now: at(121) });
+  check("reminds again at two hours", rec.fires().length === 3);
+
+  for (let h = 3; h <= 13; h++) r = await cycle(stuck, r.states, rec, { now: at(h * 60 + 1) });
+  check("stops after ten reminders", rec.fires().length === 11);
+  check("the tenth reminder is numbered 10/10", /still \(10\/10\)/.test(rec.fires()[10].title));
+
+  // One row per episode: reminders notify, they do not fill the evidence log.
+  check("reminders are not written to the alert log",
+    rec.rows.filter((x) => x.type === "A" && x.direction === "fire").length === 1);
+
+  const back = await cycle(
+    rows({ minutesAgo: 0, ambient_c: 25.0, hvac_status: "OFF" }), r.states, rec,
+    { now: at(14 * 60) }
+  );
+  check("recovery still fires after the reminders",
+    back.sent.some((x) => x.direction === "recover"));
+}
+
+// --------------------------------------------------- delivery is recorded
+
+console.log("\nDelivery evidence");
+{
+  const ok = new Recorder();
+  await cycle(rows(...flatRun(30, 26.5)), {}, ok);
+  check("a delivered alert is marked notified in the log",
+    ok.rows.find((x) => x.type === "A" && x.direction === "fire")?.notified === true);
+
+  const down = new Recorder(false);
+  const r = await cycle(rows(...flatRun(30, 26.5)), {}, down);
+  check("an undelivered alert is still recorded",
+    Boolean(down.rows.find((x) => x.type === "A" && x.direction === "fire")));
+  check("an undelivered alert is not marked notified",
+    down.rows.find((x) => x.type === "A" && x.direction === "fire")?.notified === false);
+
+  // The retry that lands on a later tick still stamps the row it belongs to.
+  down.deliver = true;
+  await cycle(rows(...flatRun(35, 26.5)), r.states, down);
+  check("a later successful retry marks the original row notified",
+    down.rows.find((x) => x.type === "A" && x.direction === "fire")?.notified === true);
 }
 
 // ------------------------------------------------- stall after a good start
@@ -234,21 +347,14 @@ console.log("\nPush service down");
 console.log("\nMalformed reading");
 {
   const rec = new Recorder();
-  let r = await cycle(
-    rows(
-      { minutesAgo: 5, ambient_c: 25, humidity_pct: 66 },
-      { minutesAgo: 10, ambient_c: 25, humidity_pct: 65 }
-    ),
-    {},
-    rec
-  );
+  const humid55 = humidRun(55, 66).map((x) => ({ ...x, minutesAgo: x.minutesAgo + 5 }));
+  let r = await cycle(rows(...humid55), {}, rec);
   check("humidity alert is active before the malformed row", Boolean(r.states.B.active));
 
   // A 200 that carried no traits: every field null, no error set.
   const withNull = rows(
     { minutesAgo: 0, ambient_c: null, humidity_pct: null, hvac_status: null, connectivity: null },
-    { minutesAgo: 5, ambient_c: 25, humidity_pct: 66 },
-    { minutesAgo: 10, ambient_c: 25, humidity_pct: 65 }
+    ...humid55
   );
   const after = await cycle(withNull, r.states, rec);
   check("null reading does not fire a false recovery",
@@ -296,7 +402,7 @@ console.log("\nQuiet hours");
 {
   const quiet = { ...settings, quiet_hours_enabled: true, quiet_start: "00:00", quiet_end: "23:59" };
   const rec = new Recorder();
-  const r = await cycle(rows(...flatRun(30, 26.5, { humidity_pct: 70 })), {}, rec, {
+  const r = await cycle(rows(...flatRun(50, 26.5, { humidity_pct: 70 })), {}, rec, {
     settings: quiet,
   });
   const types = new Set(r.sent.map((s) => s.type));

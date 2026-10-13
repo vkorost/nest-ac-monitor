@@ -96,6 +96,7 @@ h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;color:var(--mut
   margin:1.25rem 0 .55rem;font-weight:700}
 h2:first-child{margin-top:0}
 .note{color:var(--muted);font-size:.78rem;margin:.3rem 0 .6rem}
+.undelivered{display:block;color:var(--bad);font-size:.7rem;letter-spacing:.02em}
 
 /* live readings ---------------------------------------------------------- */
 .readings{display:grid;gap:.75rem 1.1rem;
@@ -108,6 +109,9 @@ h2:first-child{margin-top:0}
 .reading.big .value{font-size:2.4rem;line-height:1.05;letter-spacing:-.02em}
 @media (min-width:760px){.reading.big{grid-column:span 1}}
 
+.resume{margin-top:.75rem;font:inherit;font-size:.78rem;cursor:pointer;
+  background:none;border:1px solid var(--rule);border-radius:.4rem;
+  padding:.3rem .6rem;color:var(--warn);-webkit-tap-highlight-color:transparent}
 .verdict{margin-top:.9rem;font-size:.88rem}
 .verdict.alarm{color:var(--bad);font-weight:650}
 .verdict.watch{color:var(--warn)}
@@ -211,7 +215,7 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
 <header>
   <div>
     <h1>Nest AC Monitor</h1>
-    <span class="sub">read-only monitor</span>
+    <span class="sub">read-only &middot; unit 4109</span>
   </div>
   <button id="master" class="master off" type="button">
     <span class="dot"></span><span id="master-label">monitoring off</span>
@@ -232,6 +236,9 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
       <div class="reading"><span class="label">wet bulb</span><span class="value" id="r-wetbulb">--</span></div>
     </div>
     <div id="verdict" class="verdict"></div>
+    <button id="resume" class="resume" type="button" hidden>
+      updates paused - click to resume
+    </button>
   </section>
 
   <!-- the diagnostic view - always visible -->
@@ -268,9 +275,13 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
   <details class="card" id="p-alertlog" open>
     <summary>alert log</summary>
     <div class="body">
-      <p class="note"><b>started</b> = the condition became true and you were
-        notified. <b>cleared</b> = it went away. A pair brackets one episode, and
-        the gap between them is how long it lasted.</p>
+      <p class="note"><b>started</b> = the condition became true.
+        <b>cleared</b> = it went away. A pair brackets one episode, and the gap
+        between them is how long it lasted. A row marked <b>not delivered</b> was
+        recorded but the push never reached your phone - the evidence is written
+        before the notification is attempted, so the record survives a push
+        service being down. Stuck cooling also re-notifies hourly while it
+        lasts; those reminders are not logged, so one episode stays one pair.</p>
       <table id="alert-log"><tbody></tbody></table>
     </div>
   </details>
@@ -308,7 +319,11 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
         <label>stuck minutes<input type="number" data-key="stuck_minutes" min="5" step="1"></label>
         <label>min drop &deg;F<input type="number" data-key="min_drop_f" min="0" step="0.1"></label>
         <label>humidity %<input type="number" data-key="humidity_pct" min="1" step="1"></label>
+        <label>humidity min<input type="number" data-key="humidity_minutes" min="0" step="5"></label>
+        <label>humidity clear margin %<input type="number" data-key="humidity_clear_margin" min="0" step="1"></label>
         <label>cooldown min<input type="number" data-key="cooldown_minutes" min="1" step="5"></label>
+        <label>remind every min<input type="number" data-key="repeat_minutes" min="0" step="15"></label>
+        <label>max reminders<input type="number" data-key="repeat_max" min="0" step="1"></label>
         <label>retention days<input type="number" data-key="retention_days" min="1" step="1"></label>
       </div>
       <h2>quiet hours</h2>
@@ -363,13 +378,13 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
   <details class="card" id="p-hardware">
     <summary>hardware</summary>
     <div class="body">
-      <p class="lead">Your apartment. Original installation,
+      <p class="lead">Unit 4109, The Ivy at Riverfront. Original installation,
         building completed 2008.</p>
 
       <h2>the heat pump</h2>
       <table class="spec">
-        <tr><td>Make / model</td><td>Trane Axiom GEV<br>MODEL-NUMBER-FROM-NAMEPLATE</td></tr>
-        <tr><td>Serial</td><td>SERIAL-FROM-NAMEPLATE</td></tr>
+        <tr><td>Make / model</td><td>Trane Axiom GEV<br>GEVB06011T0100TRD010000100000000000</td></tr>
+        <tr><td>Serial</td><td>W07M89577</td></tr>
         <tr><td>Tag</td><td>HP-8</td></tr>
         <tr><td>Capacity</td><td>5 tons (60 MBH)</td></tr>
         <tr><td>Refrigerant</td><td>R-22, factory charge 98 oz (2.793 kg)</td></tr>
@@ -451,9 +466,12 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
         <tr><td><b>stuck cooling</b></td><td>Calling for cool for 25 minutes with
           less than 0.5&deg;F of drop <em>over the most recent 25 minutes</em>.
           The lockout.</td></tr>
-        <tr><td><b>humidity</b></td><td>Indoor humidity at or above 60% on two
-          consecutive polls. The coil has stopped removing moisture &mdash; often
-          the earliest sign, before temperature moves.</td></tr>
+        <tr><td><b>humidity</b></td><td>Indoor humidity at or above 60% held for
+          45 minutes without a break. The coil has stopped removing moisture
+          &mdash; often the earliest sign, before temperature moves. It used to
+          fire on two consecutive polls, which is ten minutes, and almost every
+          episode it caught cleared itself within the hour; an alert that cries
+          wolf is worse than no alert.</td></tr>
         <tr><td><b>thermostat offline</b></td><td>Thermostat unreachable twice running, or
           three consecutive API failures. Covers a power cut or an internet
           outage at the apartment.</td></tr>
@@ -461,8 +479,13 @@ tr.noterow td{border-bottom:1px dashed var(--rule);color:var(--warn);
           credentials. Without this alert the monitor would go blind silently,
           which is how these integrations usually die.</td></tr>
       </table>
-      <p>Each fires <strong>once</strong>, sends <strong>one</strong> recovery
-        notification when it clears, and never repeats more than once an hour.</p>
+      <p>Each fires <strong>once</strong> and sends <strong>one</strong> recovery
+        notification when it clears. <b>Stuck cooling</b> is the exception: while
+        it is still true you are reminded <strong>every hour, up to ten times</strong>,
+        because a compressor still locked out an hour later is still an emergency
+        and one notification in the afternoon is easy to miss. The reminders are
+        numbered in the title so your phone shows them as new messages instead of
+        collapsing them into the first one.</p>
       <p class="note">In the exported CSV and the stored data these are recorded as
         <code>A</code>, <code>B</code>, <code>C</code> and <code>D</code>, in the
         order above.</p>
@@ -504,6 +527,9 @@ const ALERT_LABEL = {
   D: "google auth expiry",
 };
 let settings = {}, editing = null, range = "24h";
+// Last sample the dashboard has seen, so a refresh that would return nothing
+// new can be skipped, and so the "last poll" clock can tick without a request.
+let lastSampleTs = null;
 
 async function api(p, o) {
   const r = await fetch(p, o);
@@ -530,6 +556,8 @@ async function refreshStatus() {
 
   settings = d.settings;
   const c = d.current || {};
+  const fresh = Boolean(c.ts) && c.ts !== lastSampleTs;
+  if (c.ts) lastSampleTs = c.ts;
   $("r-ambient").textContent = num(c.ambient_f, "F");
   $("r-setpoint").textContent = num(c.setpoint_f, "F");
   $("r-humidity").textContent = num(c.humidity_pct, "%", 0);
@@ -577,6 +605,8 @@ async function refreshStatus() {
     const k = el.dataset.key;
     if (k in settings) { if (el.type === "checkbox") el.checked = !!settings[k]; else el.value = settings[k]; }
   });
+
+  return fresh;
 }
 
 // ------------------------------------------------------------------- chart
@@ -789,24 +819,66 @@ function showTip(clientX) {
   wrap.addEventListener("pointerleave", () => { tracking = false; hideTip(); });
 })();
 
-async function refreshHistory() {
-  try { drawChart(await api("/api/history?range=" + range)); hideTip(); } catch {}
+// The series currently on screen. Kept so the 24-hour chart can be refreshed
+// incrementally - only the samples newer than its last point are fetched, which
+// is one row per five minutes instead of re-reading all ~290 rows of the window
+// every time - and so a resize or a panel toggle can redraw from memory instead
+// of spending a request. Bucketed ranges (7d and up) are always fetched whole:
+// they are user-initiated, rare, and expensive enough to keep off any timer.
+let series = null;
+
+async function refreshHistory(force) {
+  const last = series && series.bucket === "raw" && series.range === range && !force
+    ? Date.parse(series.samples[series.samples.length - 1]?.ts)
+    : NaN;
+  const since = Number.isFinite(last) ? last : null;
+
+  try {
+    const d = await api("/api/history?range=" + range + (since ? "&since=" + since : ""));
+    if (d.partial && since && series && d.range === series.range) {
+      // Append what arrived, then drop whatever fell out of the window.
+      const cutoff = Date.now() - 24 * 3_600_000;
+      series.samples = series.samples
+        .concat(d.samples)
+        .filter((x) => Date.parse(x.ts) >= cutoff);
+    } else {
+      series = d;
+    }
+    drawChart(series);
+    hideTip();
+  } catch {}
+}
+
+/** Re-render the chart from the series in hand. No request: a window resize or
+ *  an opened panel changes the layout, not the data. */
+function redrawChart() {
+  if (series) { drawChart(series); hideTip(); } else refreshHistory();
 }
 
 async function refreshAlerts() {
+  // 50 rows is not worth spending on a panel nobody has open, and this one
+  // remembers being closed. Opening it fetches immediately - see wirePanels().
+  if (!$("p-alertlog").open) return;
   try {
     const d = await api("/api/alerts");
     document.querySelector("#alert-log tbody").innerHTML = d.alerts.length
       ? d.alerts.map(a => {
-          let note = "";
-          try { note = (JSON.parse(a.payload || "{}").note) || ""; } catch {}
+          let note = "", undelivered = false;
+          try {
+            const p = JSON.parse(a.payload || "{}");
+            note = p.note || "";
+            // Only rows written since delivery started being recorded carry the
+            // flag at all; older ones say nothing rather than guess.
+            undelivered = p.notified === false;
+          } catch {}
           const esc = (x) => String(x).replace(/[&<>]/g, (c) =>
             ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
           const label = a.direction === "fire" ? "started" : "cleared";
           const what = ALERT_LABEL[a.type] || a.type;
           return '<tr><td class="t">' + a.ts.replace("T", " ").slice(0, 16)
             + '</td><td class="what">' + what + '</td><td class="' + a.direction + '">'
-            + label + '</td></tr>'
+            + label + (undelivered ? '<span class="undelivered">not delivered</span>' : "")
+            + '</td></tr>'
             + (note ? '<tr class="noterow"><td colspan="3">' + esc(note) + '</td></tr>' : "");
         }).join("")
       : '<tr><td class="t" colspan="3">no alerts recorded</td></tr>';
@@ -824,8 +896,9 @@ function wirePanels() {
     } catch {}
     d.addEventListener("toggle", () => {
       try { localStorage.setItem(key, d.open ? "1" : "0"); } catch {}
+      if (d.id === "p-alertlog" && d.open) refreshAlerts();
       if (d.id === "p-howitworks" || d.id === "p-hardware") return;
-      refreshHistory();
+      redrawChart();
     });
   });
 }
@@ -837,7 +910,7 @@ $("ranges").addEventListener("click", (e) => {
   if (!b) return;
   range = b.dataset.range;
   for (const el of $("ranges").children) el.setAttribute("aria-pressed", String(el === b));
-  refreshHistory();
+  refreshHistory(true);
 });
 
 document.querySelectorAll("[data-key]").forEach((el) => {
@@ -890,14 +963,98 @@ $("auth-submit").addEventListener("click", async () => {
 let resizeTimer;
 addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(refreshHistory, 250);
+  resizeTimer = setTimeout(redrawChart, 250);
 });
 
+// ---------------------------------------------------------------- polling
+//
+// One timer, aligned to the sampler, and nothing fetched that cannot have
+// changed. The sampler is a cron job on */5, so the old ten-second status poll
+// showed nothing new 29 times out of 30 - and it never stopped: on 2026-10-12 a
+// single dashboard tab left open in the background spent the whole Cloudflare
+// account's D1 free-tier day - 5 million rows read, shared by every database on
+// the account - on polls that returned unchanged numbers, and took an unrelated
+// app down with it.
+//
+// So: one status call per sample, fired just after the cron tick lands rather
+// than on an arbitrary phase, which is both 5x cheaper than a one-minute timer
+// and fresher. History and alerts are not on a timer at all - they are fetched
+// only when that status call reports a sample the dashboard did not have. The
+// "last poll" clock ticks locally off the timestamp already in hand. Nothing
+// runs while the tab is hidden, and nothing runs after a long idle stretch.
+// Every query here costs rows against a shared account budget, so the rule is:
+// never spend a request on an answer that cannot have changed.
+
+const SAMPLE_MS = 300_000;             // the sampler's */5 cadence
+const OFFSET_MS = 25_000;              // land just after the cron tick writes
+const IDLE_LIMIT_MS = 2 * 3_600_000;   // then stop until a human comes back
+
+let pollTimer = null;
+let lastSeen = Date.now();
+
+// Time to the next five-minute boundary plus the offset. Epoch arithmetic, so
+// the slots line up with the cron's UTC schedule whatever the local zone.
+function msToNextSlot() {
+  const now = Date.now();
+  const slot = Math.ceil((now - OFFSET_MS) / SAMPLE_MS) * SAMPLE_MS + OFFSET_MS;
+  return Math.max(5_000, slot - now);
+}
+
+function refreshAll() { refreshStatus(); refreshHistory(); refreshAlerts(); }
+
+function stopPolling(paused) {
+  if (pollTimer !== null) { clearTimeout(pollTimer); pollTimer = null; }
+  $("resume").hidden = !paused;
+}
+
+/** Resume from hidden/idle. The immediate flag fetches once before the
+ *  first slot, so a tab coming back does not wait up to five minutes. */
+function startPolling(immediate) {
+  lastSeen = Date.now();
+  $("resume").hidden = true;
+  if (immediate) refreshAll();
+  if (pollTimer === null) pollTimer = setTimeout(onTick, msToNextSlot());
+}
+
+async function onTick() {
+  pollTimer = null;
+  // Hidden tabs are stopped on visibilitychange; this is the backstop for
+  // browsers that fire the timer anyway (and for throttled background tabs).
+  if (document.hidden) { stopPolling(false); return; }
+  if (Date.now() - lastSeen > IDLE_LIMIT_MS) { stopPolling(true); return; }
+
+  const fresh = await refreshStatus();
+  if (fresh) { refreshHistory(); refreshAlerts(); }
+
+  // Not if something resumed us while that was in flight.
+  if (pollTimer === null && !document.hidden) pollTimer = setTimeout(onTick, msToNextSlot());
+}
+
+// The "last poll" line re-renders from the timestamp already in hand, so the
+// clock keeps moving between fetches without costing a request.
+setInterval(() => {
+  if (document.hidden || !lastSampleTs) return;
+  const late = Date.now() - Date.parse(lastSampleTs) > (settings.poll_seconds || 300) * 3000;
+  mark($("s-poll"), ago(lastSampleTs), late ? "warn" : "");
+}, 10_000);
+
+addEventListener("visibilitychange", () => {
+  if (document.hidden) stopPolling(false);
+  else startPolling(true);          // one catch-up fetch, then back on the timer
+});
+
+$("resume").addEventListener("click", () => startPolling(true));
+
+// Someone clicking range buttons for two hours is not idle. Only counts while
+// the timer runs: once paused, the resume button is the way back.
+const noteActivity = () => { if (pollTimer !== null) lastSeen = Date.now(); };
+addEventListener("pointerdown", noteActivity, { passive: true });
+addEventListener("keydown", noteActivity, { passive: true });
+
 wirePanels();
-refreshStatus(); refreshHistory(); refreshAlerts();
-setInterval(refreshStatus, 10000);
-setInterval(refreshHistory, 60000);
-setInterval(refreshAlerts, 30000);
+// A page opened into a background tab polls nothing until it is looked at.
+if (document.hidden) stopPolling(false);
+else startPolling(true);
 </script>
 </body>
 </html>`;
